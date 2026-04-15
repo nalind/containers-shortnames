@@ -22,17 +22,16 @@ def get_images_to_inspect() -> list[str]:
     ]
 
 
-async def inspect_image(shortname: str) -> None:
+async def inspect_image(url: str) -> tuple[str, str] | None:
     proc = await asyncio.create_subprocess_shell(
-        cmd := f"skopeo inspect --override-arch amd64 docker://{shortname}",
+        f"skopeo inspect --override-arch amd64 docker://{url}",
         stderr=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
     )
-    stdout, stderr = (out.decode() for out in await proc.communicate())
+    _, stderr = (out.decode() for out in await proc.communicate())
     if proc.returncode != 0:
-        raise RuntimeError(
-            f"{cmd} failed with exit code {proc.returncode}, {stdout=}, {stderr=}"
-        )
+        return url, stderr.strip()
+    return None
 
 
 if __name__ == "__main__":
@@ -71,11 +70,15 @@ if __name__ == "__main__":
     shutil.copy("shortnames.conf", shortnames_dest)
 
     async def run():
-        tasks = []
-        for shortname in get_images_to_inspect():
-            tasks.append(inspect_image(shortname))
-
-        await asyncio.gather(*tasks)
+        results = await asyncio.gather(
+            *[inspect_image(url) for url in get_images_to_inspect()]
+        )
+        failures = [r for r in results if r is not None]
+        if failures:
+            print("Failed to inspect the following images:")
+            for url, err in failures:
+                print(f"  {url}\n    {err}")
+            raise SystemExit(1)
 
     try:
         asyncio.run(run())
