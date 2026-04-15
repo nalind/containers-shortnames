@@ -24,7 +24,7 @@ def get_images_to_inspect() -> list[str]:
 
 async def inspect_image(shortname: str) -> None:
     proc = await asyncio.create_subprocess_shell(
-        cmd := f"skopeo inspect docker://{shortname}",
+        cmd := f"skopeo inspect --override-arch amd64 docker://{shortname}",
         stderr=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
     )
@@ -70,17 +70,15 @@ if __name__ == "__main__":
         shutil.copy(shortnames_dest, f"{shortnames_dest}.back")
     shutil.copy("shortnames.conf", shortnames_dest)
 
+    async def run():
+        tasks = []
+        for shortname in get_images_to_inspect():
+            tasks.append(inspect_image(shortname))
+
+        await asyncio.gather(*tasks)
+
     try:
-        loop = asyncio.get_event_loop()
-
-        async def run():
-            tasks = []
-            for shortname in get_images_to_inspect():
-                tasks.append(inspect_image(shortname))
-
-            await asyncio.gather(*tasks)
-
-        loop.run_until_complete(run())
+        asyncio.run(run())
 
     finally:
         os.remove(shortnames_dest)
